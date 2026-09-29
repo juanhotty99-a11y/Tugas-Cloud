@@ -1,172 +1,180 @@
-# Tugas Komputasi Awan & Terdistribusi: Mengakses Database Laptop dari HP
+# Tugas Komputasi Awan & Terdistribusi: REST API 2 Device
 
-Proyek ini membuat **2 device (laptop & HP) dengan IP berbeda bisa mengakses database yang sama**.
-Database MySQL ada di laptop, dan HP mengaksesnya lewat jaringan Wi-Fi.
+Konsep sesuai arahan dosen:
 
-## Konsep (arsitektur client–server)
+- **Device A = SERVER**: menjalankan **REST API + database MySQL**.
+- **Device B = CLIENT**: melakukan request **GET, POST, PUT, DELETE** ke API di Device A.
+- **Seluruh operasi database dilakukan lewat request dari Device B** ke server Device A.
+- Boleh di jaringan (Wi-Fi) yang sama dan cukup berjalan di **local**; yang penting
+  **IP kedua device berbeda** (2 mesin yang berbeda).
+- CRUD harus **lengkap** (tambah, lihat, ubah, hapus), tidak hanya tambah data.
 
 ```
- ┌──────────────┐   Wi-Fi / HTTP    ┌──────────────────────────── LAPTOP ───┐
- │  HP          │ ───────────────▶  │  server.js (Node.js + Express) :3000   │
- │  IP 192.168. │ ◀───────────────  │            │                          │
- │  1.xx        │   data JSON       │            ▼                          │
- └──────────────┘                   │  MySQL (XAMPP) :3306 → db_kampus      │
-                                    │  IP 192.168.1.yy                      │
- ┌──────────────┐                   │                                       │
- │ Browser      │ ──localhost─────▶ │                                       │
- │ laptop       │                   └───────────────────────────────────────┘
- └──────────────┘
+        DEVICE B (CLIENT)                               DEVICE A (SERVER)
+  IP: 192.168.1.23 (HP / laptop 2)               IP: 192.168.1.10 (laptop kamu)
+ ┌────────────────────────────┐   HTTP request  ┌───────────────────────────────┐
+ │ client/index.html          │ ──────────────▶ │ server.js  (REST API :3000)   │
+ │  GET    /api/mahasiswa     │                 │      │                        │
+ │  POST   /api/mahasiswa     │ ◀────────────── │      ▼                        │
+ │  PUT    /api/mahasiswa/:id │   respons JSON  │ MySQL (XAMPP) → db_kampus     │
+ │  DELETE /api/mahasiswa/:id │                 └───────────────────────────────┘
+ └────────────────────────────┘                         (satu Wi-Fi yang sama)
 ```
-
-HP **tidak** langsung konek ke MySQL. HP membuka web di laptop, lalu server di laptop
-(`server.js`) yang membaca/menulis ke MySQL. Ini cara standar & aman (database tidak
-dibuka ke jaringan). Kalau data ditambah dari HP, data langsung muncul di laptop, dan sebaliknya.
 
 ## Isi proyek
 
-| File | Fungsi |
-|------|--------|
-| `server.js` | Server API (CRUD) yang terhubung ke MySQL, listen di `0.0.0.0:3000` agar bisa diakses device lain |
-| `public/index.html` | Tampilan web (bisa dibuka dari laptop & HP) untuk tambah/edit/hapus data |
-| `database.sql` | Script SQL (opsional, karena tabel sudah dibuat otomatis oleh server) |
-| `package.json` | Daftar library Node.js |
-| `jalankan-online.bat` | Double-click untuk menjalankan server + ngrok sekaligus (satu link untuk semua jaringan) |
+| File | Jalan di | Fungsi |
+|------|----------|--------|
+| `server.js` | Device A | REST API (CRUD) yang terhubung ke MySQL, menerima request dari device lain, dan mencatat IP setiap request di terminal |
+| `database.sql` | Device A | Script SQL + contoh data (opsional, tabel juga dibuat otomatis oleh server) |
+| `package.json` | Device A | Daftar library Node.js (`express`, `mysql2`) |
+| `client/index.html` | Device B | Aplikasi client: isi alamat server, lalu kirim GET/POST/PUT/DELETE. Ada **log request** (method, URL, status, respons JSON) dan tampilan **IP client vs IP server** untuk bukti ke dosen |
+| `jalankan-online.bat` | Device A | Opsional: jalankan server + ngrok sekaligus |
 
 ---
 
-## LANGKAH DARI 0
+## BAGIAN 1 – Siapkan DEVICE A (server, laptop kamu)
 
-### 1. Install software yang dibutuhkan (di laptop)
+### 1. Install software
 
 1. **VS Code** → https://code.visualstudio.com
-2. **Node.js (versi LTS)** → https://nodejs.org → install, klik Next terus.
-3. **XAMPP** (berisi MySQL + phpMyAdmin) → https://www.apachefriends.org → install.
+2. **Node.js (LTS)** → https://nodejs.org
+3. **XAMPP** (MySQL + phpMyAdmin) → https://www.apachefriends.org
 
-Cek Node.js sudah terinstall: buka VS Code → menu **Terminal → New Terminal**, lalu ketik:
-
-```bash
-node -v
-npm -v
-```
-
-Kalau keluar nomor versi (misal `v22.x.x`), berarti aman.
+Cek di terminal VS Code (**Terminal → New Terminal**): `node -v` dan `npm -v` harus keluar nomor versi.
 
 ### 2. Nyalakan MySQL
 
-1. Buka **XAMPP Control Panel**.
-2. Klik **Start** pada **Apache** dan **MySQL** (sampai warnanya hijau).
-3. (Opsional) Buka `http://localhost/phpmyadmin` di browser laptop untuk melihat database.
+Buka **XAMPP Control Panel** → klik **Start** pada **Apache** dan **MySQL** (sampai hijau).
 
 > Default XAMPP: user `root`, password kosong. Kalau MySQL kamu pakai password,
-> ubah bagian `password: ''` di `server.js`.
+> ubah `password: ''` di `server.js`.
 
-### 3. Buat proyek di VS Code
-
-**Cara A – clone dari GitHub:**
+### 3. Buka proyek di VS Code
 
 ```bash
-git clone https://github.com/juanhotty99-a11y/Tugas-Cloud.git
-cd Tugas-Cloud
+git clone -b claude/upbeat-darwin-em5uux https://github.com/juanhotty99-a11y/Tugas-Cloud.git
 ```
 
-**Cara B – manual:** buat folder `Tugas-Cloud`, buka di VS Code (**File → Open Folder**),
-lalu buat file-file berikut dengan isi yang sama seperti di repo ini:
+Lalu **File → Open Folder** → pilih folder `Tugas-Cloud`.
 
-```
-Tugas-Cloud/
-├── package.json
-├── server.js
-├── database.sql
-└── public/
-    └── index.html
-```
-
-### 4. Install library
-
-Di terminal VS Code (pastikan posisinya di folder proyek):
+### 4. Install library & jalankan server
 
 ```bash
 npm install
-```
-
-Ini akan mengunduh `express` (web server) dan `mysql2` (driver MySQL) ke folder `node_modules`.
-
-### 5. Jalankan server
-
-```bash
 npm start
 ```
 
-Kalau berhasil, muncul seperti ini:
+Hasilnya:
 
 ```
-========================================
- Server berjalan! Buka alamat berikut:
-  - Di laptop : http://localhost:3000
-  - Di HP     : http://192.168.1.10:3000
-========================================
+==========================================================
+ DEVICE A (SERVER) berjalan. Alamat API untuk Device B:
+   http://192.168.1.10:3000
+ Di bawah ini akan muncul log setiap request dari client.
+==========================================================
 ```
 
-Database `db_kampus` dan tabel `mahasiswa` otomatis dibuat. Cek di phpMyAdmin kalau mau.
+Catat alamat itu (IP kamu akan berbeda). Database `db_kampus` & tabel `mahasiswa` dibuat otomatis.
+Kalau mau ada contoh data, buka `http://localhost/phpmyadmin` → tab **SQL** → paste isi
+`database.sql` → **Go**.
 
-> Kalau muncul `Gagal konek ke MySQL`, berarti MySQL di XAMPP belum di-Start atau password salah.
+### 5. Izinkan firewall (penting!)
 
-### 6. Buka dari laptop
+Saat pertama `npm start`, Windows biasanya memunculkan pop-up firewall → centang
+**Private networks** (dan **Public** kalau pakai Wi-Fi kampus) → **Allow access**.
+Kalau terlanjur ditutup, buka **PowerShell sebagai Administrator**:
 
-Buka browser di laptop → `http://localhost:3000` → coba tambah data.
-
-### 7. Buka dari HP (bagian utama tugas)
-
-1. **Sambungkan HP ke Wi-Fi yang SAMA dengan laptop** (atau nyalakan hotspot HP lalu laptop konek ke hotspot itu).
-2. Lihat IP laptop di output terminal (baris `Di HP`), atau cek manual:
-   - Windows: buka CMD → `ipconfig` → lihat **IPv4 Address** di bagian Wi-Fi (misal `192.168.1.10`)
-   - Mac/Linux: `ifconfig` atau `ip a`
-3. Di browser HP buka: `http://192.168.1.10:3000` (ganti dengan IP laptop kamu).
-4. Di bagian atas halaman akan terlihat **IP HP** dan **IP laptop** → buktinya IP-nya berbeda.
-5. Tambah data dari HP → dalam 3 detik data muncul juga di laptop (dan tersimpan di MySQL/phpMyAdmin).
-
-Di terminal VS Code juga terlihat log request dari masing-masing IP, contoh:
-
+```powershell
+netsh advfirewall firewall add rule name="Node 3000" dir=in action=allow protocol=TCP localport=3000
 ```
-[10:15:02] 127.0.0.1    -> GET /api/mahasiswa      ← dari laptop
-[10:15:05] 192.168.1.23 -> POST /api/mahasiswa     ← dari HP
-```
-
-### 8. Kalau HP tidak bisa membuka (paling sering terjadi)
-
-**Penyebab #1: Windows Firewall memblokir port 3000.**
-
-- Saat pertama kali `npm start`, biasanya muncul pop-up Windows Firewall → centang
-  **Private networks** (dan Public kalau Wi-Fi kampus) → **Allow access**.
-- Kalau terlanjur ditutup, buka **PowerShell sebagai Administrator** lalu jalankan:
-
-  ```powershell
-  netsh advfirewall firewall add rule name="Node 3000" dir=in action=allow protocol=TCP localport=3000
-  ```
-
-**Cek lainnya:**
-
-- HP dan laptop harus di jaringan yang sama. **Wi-Fi kampus/kafe sering memblokir
-  koneksi antar-device (client isolation)** → solusinya pakai hotspot HP.
-- Pastikan pakai `http://` bukan `https://`, dan jangan lupa `:3000`.
-- Pastikan data HP (seluler) tidak dipakai; gunakan Wi-Fi.
-- Pastikan server masih jalan di terminal (jangan ditutup).
 
 ---
 
-## Daftar API (bisa ditunjukkan ke dosen)
+## BAGIAN 2 – Pakai DEVICE B (client)
 
-| Method | URL | Fungsi |
-|--------|-----|--------|
-| GET | `/api/mahasiswa` | Ambil semua data |
-| POST | `/api/mahasiswa` | Tambah data (body JSON: `nim`, `nama`, `jurusan`) |
-| PUT | `/api/mahasiswa/:id` | Ubah data |
-| DELETE | `/api/mahasiswa/:id` | Hapus data |
-| GET | `/api/info` | Lihat IP client & IP server |
+**Sambungkan Device B ke Wi-Fi yang sama dengan Device A** (atau pakai hotspot HP, lalu
+laptop Device A konek ke hotspot itu). Pilih salah satu:
 
-Contoh tes dari HP: buka `http://192.168.1.10:3000/api/mahasiswa` → keluar data JSON dari database laptop.
+### Opsi 1 – Device B adalah laptop / PC lain
 
-## Satu Link untuk Semua Jaringan (seperti web teman)
+1. Copy file `client/index.html` ke laptop Device B (lewat flashdisk, WhatsApp, Google Drive,
+   atau clone repo ini), lalu **double-click** untuk membukanya di browser.
+2. Di kolom **Alamat Server (Device A)** isi `http://192.168.1.10:3000` (alamat dari langkah 4)
+   → **Hubungkan**.
+
+Di sini client benar-benar terpisah: file client ada di Device B, dan hanya request API
+yang dikirim ke Device A.
+
+### Opsi 2 – Device B adalah HP
+
+Di browser HP buka `http://192.168.1.10:3000` → halaman client langsung terbuka dan
+otomatis terhubung ke API Device A. (Server juga menyediakan file client ini supaya HP
+tidak perlu menyimpan file HTML.)
+
+### Opsi 3 – Pakai Postman / Thunder Client (tanpa tampilan web)
+
+Dari laptop Device B, kirim request langsung ke `http://192.168.1.10:3000/api/mahasiswa`
+(lihat daftar API di bawah). Di VS Code bisa pakai extension **Thunder Client**.
+
+### Yang ditunjukkan saat demo ke dosen
+
+1. Di client (Device B) bagian **1** muncul **IP Device B** dan **IP Device A** yang **berbeda**
+   dengan status hijau *"IP client dan server berbeda (2 device)"*.
+2. Lakukan semua operasi dari Device B:
+   - **POST** → isi form, klik *POST – Tambah Data*
+   - **GET** → klik *GET – Muat Semua* atau *GET by ID*
+   - **PUT** → klik tombol *PUT* di salah satu data, ubah, lalu *PUT – Simpan Perubahan*
+   - **DELETE** → klik tombol *DELETE*
+3. Bagian **4. Log Request** di client menampilkan setiap request (method, URL, status, respons JSON).
+4. Di terminal VS Code Device A, setiap request tercatat beserta IP pengirimnya:
+
+   ```
+   [10:15:02] Device B (192.168.1.23) -> POST   /api/mahasiswa -> 201
+   [10:15:05] Device B (192.168.1.23) -> PUT    /api/mahasiswa/3 -> 200
+   [10:15:09] Device B (192.168.1.23) -> DELETE /api/mahasiswa/3 -> 200
+   ```
+
+5. Buka phpMyAdmin di Device A → tabel `mahasiswa` berubah sesuai request dari Device B.
+
+### Kalau Device B tidak bisa terhubung
+
+- Pastikan firewall sudah diizinkan (langkah 5).
+- Pastikan kedua device di Wi-Fi yang sama. **Wi-Fi kampus/kafe sering memblokir koneksi
+  antar-device** → pakai hotspot HP.
+- Pakai `http://` (bukan `https://`) dan jangan lupa `:3000`.
+- Pastikan `npm start` di Device A masih jalan & MySQL di XAMPP masih Start.
+- Tes dulu di browser Device B: `http://192.168.1.10:3000/api` → harus keluar JSON daftar endpoint.
+
+---
+
+## Daftar REST API (Device A)
+
+| Method | URL | Body (JSON) | Fungsi | Status sukses |
+|--------|-----|-------------|--------|---------------|
+| GET | `/api/mahasiswa` | – | Ambil semua data | 200 |
+| GET | `/api/mahasiswa/:id` | – | Ambil satu data | 200 (404 kalau tidak ada) |
+| POST | `/api/mahasiswa` | `{"nim","nama","jurusan"}` | Tambah data | 201 |
+| PUT | `/api/mahasiswa/:id` | `{"nim","nama","jurusan"}` | Ubah data | 200 |
+| DELETE | `/api/mahasiswa/:id` | – | Hapus data | 200 |
+| GET | `/api/info` | – | Lihat IP client & IP server | 200 |
+| GET | `/api` | – | Daftar endpoint | 200 |
+
+Contoh request dengan `curl` dari Device B (jalankan di **CMD**; Windows 10+ sudah punya `curl.exe`):
+
+```bash
+curl.exe http://192.168.1.10:3000/api/mahasiswa
+curl.exe -X POST http://192.168.1.10:3000/api/mahasiswa -H "Content-Type: application/json" -d "{\"nim\":\"123\",\"nama\":\"Andi\",\"jurusan\":\"Informatika\"}"
+curl.exe -X PUT http://192.168.1.10:3000/api/mahasiswa/1 -H "Content-Type: application/json" -d "{\"nim\":\"123\",\"nama\":\"Andi\",\"jurusan\":\"Sistem Informasi\"}"
+curl.exe -X DELETE http://192.168.1.10:3000/api/mahasiswa/1
+```
+
+---
+
+## Opsional: Satu Link untuk Semua Jaringan (ngrok / Cloudflare)
+
+> Kata dosen: **cukup jalan di local**, yang penting IP kedua device berbeda. Bagian ini
+> hanya tambahan kalau mau bisa diakses dari jaringan yang berbeda (misal HP pakai kuota).
 
 Cara di atas (`http://192.168.x.x:3000`) hanya jalan kalau HP & laptop **satu Wi-Fi**, dan
 linknya beda antara laptop (`localhost`) dan HP (IP). Supaya **semua device pakai SATU link
@@ -180,7 +188,7 @@ lewat **tunnel**:
 ```
 
 Database & server **tetap di laptop kamu**, tunnel hanya "meneruskan" akses dari internet.
-Di halaman web, bagian "IP perangkat kamu" akan menampilkan IP asli tiap device, jadi
+Di client, bagian "IP Device B" akan menampilkan IP asli tiap device, jadi
 terlihat jelas bahwa device dengan IP berbeda mengakses database yang sama.
 
 > Syarat: laptop harus **menyala**, `npm start` & tunnel harus **tetap jalan**, dan MySQL tetap Start.

@@ -1,5 +1,8 @@
-// Server API sederhana: menjembatani device lain (HP) dengan database MySQL di laptop.
-// Alur: HP (browser) --HTTP--> Laptop (server.js :3000) --> MySQL (localhost:3306)
+// ===================== DEVICE A: SERVER =====================
+// REST API + database MySQL. Semua operasi database (GET, POST, PUT, DELETE)
+// dilakukan lewat request HTTP dari Device B (client) yang IP-nya berbeda.
+//
+// Alur: Device B (client) --HTTP request--> Device A (server.js :3000) --> MySQL (localhost:3306)
 
 const express = require('express');
 const mysql = require('mysql2/promise');
@@ -17,11 +20,38 @@ const DB_CONFIG = {
 const DB_NAME = 'db_kampus';
 
 const app = express();
-// Percaya header X-Forwarded-For dari ngrok / Cloudflare Tunnel,
-// supaya IP asli tiap device tetap terbaca walau lewat link publik
+// Percaya header X-Forwarded-For (kalau lewat ngrok / Cloudflare Tunnel),
+// supaya IP asli tiap device tetap terbaca
 app.set('trust proxy', true);
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// CORS: izinkan client dari device/origin lain (misal client/index.html
+// yang dibuka langsung di laptop Device B) memanggil API ini
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// Log setiap request: IP device pengirim, method, URL, dan status respons.
+// Ini bukti di terminal Device A bahwa request datang dari device lain.
+app.use((req, res, next) => {
+  const ip = clientIp(req);
+  const asal = getLocalIPs().includes(ip) || ip === '127.0.0.1' || ip === '::1' ? 'Device A' : 'Device B';
+  res.on('finish', () => {
+    if (!req.url.startsWith('/api')) return;
+    console.log(
+      `[${new Date().toLocaleTimeString()}] ${asal} (${ip}) -> ${req.method.padEnd(6)} ${req.url} -> ${res.statusCode}`
+    );
+  });
+  next();
+});
+
+// Halaman client juga disediakan di sini supaya HP bisa langsung membukanya.
+// (Client yang sama bisa juga dibuka terpisah dari file client/index.html)
+app.use(express.static(path.join(__dirname, 'client')));
 
 let pool;
 
@@ -43,21 +73,29 @@ async function initDatabase() {
   `);
 }
 
-// Catat setiap request supaya kelihatan device mana yang mengakses
-app.use((req, res, next) => {
-  const ip = (req.ip || '').replace('::ffff:', '');
-  console.log(`[${new Date().toLocaleTimeString()}] ${ip} -> ${req.method} ${req.url}`);
-  next();
+// ===================== REST API =====================
+
+// Daftar endpoint
+app.get('/api', (req, res) => {
+  res.json({
+    nama: 'REST API Data Mahasiswa (Device A)',
+    endpoint: [
+      'GET    /api/info',
+      'GET    /api/mahasiswa',
+      'GET    /api/mahasiswa/:id',
+      'POST   /api/mahasiswa',
+      'PUT    /api/mahasiswa/:id',
+      'DELETE /api/mahasiswa/:id',
+    ],
+  });
 });
 
-// ===== API CRUD =====
-
-// Info IP klien (ditampilkan di halaman web)
+// Info IP: IP client yang request vs IP server
 app.get('/api/info', (req, res) => {
-  res.json({ ipKamu: (req.ip || '').replace('::ffff:', ''), ipServer: getLocalIPs() });
+  res.json({ ipClient: clientIp(req), ipServer: getLocalIPs() });
 });
 
-// READ semua data
+// GET: ambil semua data
 app.get('/api/mahasiswa', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM mahasiswa ORDER BY id DESC');
@@ -67,9 +105,20 @@ app.get('/api/mahasiswa', async (req, res) => {
   }
 });
 
-// CREATE data baru
+// GET: ambil satu data berdasarkan id
+app.get('/api/mahasiswa/:id', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM mahasiswa WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Data tidak ditemukan' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: tambah data baru
 app.post('/api/mahasiswa', async (req, res) => {
-  const { nim, nama, jurusan } = req.body;
+  const { nim, nama, jurusan } = req.body || {};
   if (!nim || !nama || !jurusan) {
     return res.status(400).json({ error: 'nim, nama, dan jurusan wajib diisi' });
   }
@@ -78,15 +127,15 @@ app.post('/api/mahasiswa', async (req, res) => {
       'INSERT INTO mahasiswa (nim, nama, jurusan) VALUES (?, ?, ?)',
       [nim, nama, jurusan]
     );
-    res.status(201).json({ id: result.insertId, nim, nama, jurusan });
+    res.status(201).json({ pesan: 'Data berhasil ditambahkan', id: result.insertId, nim, nama, jurusan });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// UPDATE data
+// PUT: ubah data
 app.put('/api/mahasiswa/:id', async (req, res) => {
-  const { nim, nama, jurusan } = req.body;
+  const { nim, nama, jurusan } = req.body || {};
   if (!nim || !nama || !jurusan) {
     return res.status(400).json({ error: 'nim, nama, dan jurusan wajib diisi' });
   }
@@ -96,24 +145,28 @@ app.put('/api/mahasiswa/:id', async (req, res) => {
       [nim, nama, jurusan, req.params.id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Data tidak ditemukan' });
-    res.json({ id: Number(req.params.id), nim, nama, jurusan });
+    res.json({ pesan: 'Data berhasil diubah', id: Number(req.params.id), nim, nama, jurusan });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE data
+// DELETE: hapus data
 app.delete('/api/mahasiswa/:id', async (req, res) => {
   try {
     const [result] = await pool.query('DELETE FROM mahasiswa WHERE id = ?', [req.params.id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Data tidak ditemukan' });
-    res.json({ pesan: 'Data berhasil dihapus' });
+    res.json({ pesan: 'Data berhasil dihapus', id: Number(req.params.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Ambil semua IPv4 lokal laptop (Wi-Fi / LAN)
+function clientIp(req) {
+  return (req.ip || '').replace('::ffff:', '');
+}
+
+// Ambil semua IPv4 lokal Device A (Wi-Fi / LAN)
 function getLocalIPs() {
   const ips = [];
   for (const addrs of Object.values(os.networkInterfaces())) {
@@ -128,15 +181,13 @@ initDatabase()
   .then(() => {
     // '0.0.0.0' = terima koneksi dari device lain, bukan hanya dari laptop sendiri
     app.listen(PORT, '0.0.0.0', () => {
-      console.log('========================================');
-      console.log(' Server berjalan! Buka alamat berikut:');
-      console.log(`  - Di laptop : http://localhost:${PORT}`);
+      console.log('==========================================================');
+      console.log(' DEVICE A (SERVER) berjalan. Alamat API untuk Device B:');
       for (const ip of getLocalIPs()) {
-        console.log(`  - Di HP     : http://${ip}:${PORT}`);
+        console.log(`   http://${ip}:${PORT}`);
       }
-      console.log('  - Link publik (satu link untuk semua jaringan):');
-      console.log('    jalankan ngrok / cloudflared, lihat README bagian "Satu Link"');
-      console.log('========================================');
+      console.log(' Di bawah ini akan muncul log setiap request dari client.');
+      console.log('==========================================================');
     });
   })
   .catch((err) => {

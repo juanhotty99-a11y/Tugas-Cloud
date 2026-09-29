@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Client REST API</title>
+  <style>
+    :root {
+      --bg: #f3f4f6; --card: #ffffff; --text: #111827; --muted: #6b7280; --border: #e5e7eb;
+      --input: #ffffff; --primary: #2563eb; --ok: #16a34a; --err: #dc2626;
+      --get: #2563eb; --post: #16a34a; --put: #d97706; --delete: #dc2626; --code: #f9fafb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --input: #0f172a; --code: #0f172a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--text); }
+    .container { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    h2 { font-size: 1rem; margin: 0 0 12px; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin: 0 0 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    input { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; background: var(--input); color: var(--text); }
+    .row { display: flex; gap: 8px; }
+    .row input { margin-bottom: 0; }
+    button { padding: 10px 14px; border: 0; border-radius: 6px; font-size: 0.9rem; cursor: pointer; color: #fff; white-space: nowrap; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .b-primary { background: var(--primary); }
+    .b-get { background: var(--get); } .b-post { background: var(--post); }
+    .b-put { background: var(--put); } .b-delete { background: var(--delete); }
+    .b-plain { background: var(--border); color: var(--text); }
+    .full { width: 100%; }
+    .status { margin-top: 10px; font-size: 0.9rem; }
+    .ipgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .ipbox { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .ipbox small { color: var(--muted); display: block; }
+    .ipbox strong { font-family: ui-monospace, monospace; word-break: break-all; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: #fff; }
+    .ok { background: var(--ok); } .err { background: var(--err); }
+    .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .item:last-child { border-bottom: 0; }
+    .item small { color: var(--muted); }
+    .aksi { display: flex; gap: 6px; flex-shrink: 0; }
+    .kosong { color: var(--muted); text-align: center; margin: 8px 0; }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .head h2 { margin: 0; }
+    .log { max-height: 360px; overflow-y: auto; }
+    .log-item { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 0.85rem; }
+    .log-item:last-child { border-bottom: 0; }
+    .m { display: inline-block; min-width: 58px; text-align: center; padding: 1px 6px; border-radius: 4px; color: #fff; font-weight: 700; font-size: 0.75rem; }
+    .m-GET { background: var(--get); } .m-POST { background: var(--post); }
+    .m-PUT { background: var(--put); } .m-DELETE { background: var(--delete); }
+    .url { font-family: ui-monospace, monospace; word-break: break-all; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 6px 0 0; font-size: 0.78rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    @media (max-width: 480px) { .ipgrid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Client REST API (Device B)</h1>
+    <p class="sub">Semua operasi database dilakukan lewat request HTTP ke server di Device A.</p>
+
+    <!-- 1. Koneksi ke Device A -->
+    <div class="card">
+      <h2>1. Alamat Server (Device A)</h2>
+      <div class="row">
+        <input id="serverUrl" placeholder="contoh: http://192.168.1.10:3000">
+        <button class="b-primary" id="btnHubungkan">Hubungkan</button>
+      </div>
+      <div class="status" id="status">Belum terhubung.</div>
+      <div class="ipgrid" id="ipgrid" hidden>
+        <div class="ipbox"><small>IP Device B (client, perangkat ini)</small><strong id="ipClient">-</strong></div>
+        <div class="ipbox"><small>IP Device A (server + database)</small><strong id="ipServer">-</strong></div>
+      </div>
+    </div>
+
+    <!-- 2. Form POST / PUT -->
+    <div class="card">
+      <h2 id="judulForm">2. Tambah Data (POST)</h2>
+      <form id="form">
+        <input type="hidden" id="id">
+        <input id="nim" placeholder="NIM" required>
+        <input id="nama" placeholder="Nama" required>
+        <input id="jurusan" placeholder="Jurusan" required>
+        <button type="submit" class="b-post full" id="btnSimpan">POST – Tambah Data</button>
+        <button type="button" class="b-plain full" id="btnBatal" style="margin-top:6px" hidden>Batal Edit</button>
+      </form>
+    </div>
+
+    <!-- 3. Data (GET, PUT, DELETE) -->
+    <div class="card">
+      <div class="head">
+        <h2>3. Data Mahasiswa</h2>
+        <button class="b-get" id="btnGetAll">GET – Muat Semua</button>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <input id="cariId" type="number" min="1" placeholder="Cari berdasarkan ID">
+        <button class="b-get" id="btnGetId">GET by ID</button>
+      </div>
+      <div id="list"><p class="kosong">Hubungkan ke server dulu.</p></div>
+    </div>
+
+    <!-- 4. Log request -->
+    <div class="card">
+      <div class="head">
+        <h2>4. Log Request ke Server</h2>
+        <button class="b-plain" id="btnClearLog">Bersihkan</button>
+      </div>
+      <div class="log" id="log"><p class="kosong">Belum ada request.</p></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const form = $('form');
+    let serverUrl = '';
+    let dataCache = {};
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Alamat server: yang tersimpan sebelumnya, atau asal halaman ini kalau dibuka dari server
+    try { serverUrl = localStorage.getItem('serverUrl') || ''; } catch (e) {}
+    if (!serverUrl && location.protocol.startsWith('http')) serverUrl = location.origin;
+    $('serverUrl').value = serverUrl;
+
+    // Semua request ke server lewat fungsi ini, lalu dicatat di log
+    async function api(method, path, body) {
+      const url = serverUrl + path;
+      let status = 0, data;
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: body ? { 'Content-Type': 'application/json' } : {},
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        status = res.status;
+        data = await res.json().catch(() => null);
+      } catch (err) {
+        data = { error: 'Tidak bisa terhubung ke server: ' + err.message };
+      }
+      if (path !== '/api/info') tambahLog(method, url, status, body, data);
+      return { ok: status >= 200 && status < 300, status, data };
+    }
+
+    function tambahLog(method, url, status, body, data) {
+      const log = $('log');
+      if (log.querySelector('.kosong')) log.innerHTML = '';
+      const el = document.createElement('div');
+      el.className = 'log-item';
+      const ok = status >= 200 && status < 300;
+      el.innerHTML = `
+        <span class="m m-${method}">${method}</span>
+        <span class="url">${escapeHtml(url)}</span>
+        <span class="badge ${ok ? 'ok' : 'err'}">${status || 'GAGAL'}</span>
+        <small style="color:var(--muted)"> ${new Date().toLocaleTimeString()}</small>
+        ${body ? `<pre>Body: ${escapeHtml(JSON.stringify(body, null, 2))}</pre>` : ''}
+        <pre>Respons: ${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+      log.prepend(el);
+    }
+
+    async function hubungkan() {
+      serverUrl = $('serverUrl').value.trim().replace(/\/+$/, '');
+      if (serverUrl && !/^https?:\/\//.test(serverUrl)) serverUrl = 'http://' + serverUrl;
+      $('serverUrl').value = serverUrl;
+      if (!serverUrl) { $('status').textContent = 'Isi alamat server dulu.'; return; }
+      try { localStorage.setItem('serverUrl', serverUrl); } catch (e) {}
+
+      $('status').textContent = 'Menghubungkan...';
+      const { ok, data } = await api('GET', '/api/info');
+      if (!ok) {
+        $('status').innerHTML = '<span class="badge err">Gagal</span> Server tidak bisa dihubungi. Cek alamat, Wi-Fi, dan firewall Device A.';
+        $('ipgrid').hidden = true;
+        return;
+      }
+      $('ipClient').textContent = data.ipClient;
+      $('ipServer').textContent = data.ipServer.join(', ');
+      $('ipgrid').hidden = false;
+      const beda = !data.ipServer.includes(data.ipClient) && data.ipClient !== '127.0.0.1';
+      $('status').innerHTML = beda
+        ? '<span class="badge ok">Terhubung</span> IP client dan server berbeda (2 device).'
+        : '<span class="badge err">Perhatian</span> Terhubung, tapi ini perangkat yang sama dengan server. Buka dari Device B untuk demo.';
+      getAll();
+    }
+
+    function renderList(rows) {
+      const list = $('list');
+      dataCache = Object.fromEntries(rows.map((m) => [m.id, m]));
+      if (!rows.length) { list.innerHTML = '<p class="kosong">Belum ada data.</p>'; return; }
+      list.innerHTML = rows.map((m) => `
+        <div class="item">
+          <div>
+            <strong>${escapeHtml(m.nama)}</strong><br>
+            <small>ID ${m.id} &middot; ${escapeHtml(m.nim)} &middot; ${escapeHtml(m.jurusan)}</small>
+          </div>
+          <div class="aksi">
+            <button class="b-put" onclick="mulaiEdit(${m.id})">PUT</button>
+            <button class="b-delete" onclick="hapus(${m.id})">DELETE</button>
+          </div>
+        </div>`).join('');
+    }
+
+    // GET semua data
+    async function getAll() {
+      const { ok, data } = await api('GET', '/api/mahasiswa');
+      if (ok) renderList(data);
+    }
+
+    // GET satu data berdasarkan ID
+    async function getById() {
+      const id = $('cariId').value;
+      if (!id) return;
+      const { ok, data } = await api('GET', `/api/mahasiswa/${id}`);
+      if (ok) renderList([data]);
+      else alert(data?.error || 'Data tidak ditemukan');
+    }
+
+    // DELETE data
+    async function hapus(id) {
+      if (!confirm(`Hapus data ID ${id}?`)) return;
+      const { ok, data } = await api('DELETE', `/api/mahasiswa/${id}`);
+      if (!ok) alert(data?.error);
+      getAll();
+    }
+
+    function mulaiEdit(id) {
+      const m = dataCache[id];
+      $('id').value = m.id;
+      $('nim').value = m.nim;
+      $('nama').value = m.nama;
+      $('jurusan').value = m.jurusan;
+      $('judulForm').textContent = `2. Ubah Data ID ${m.id} (PUT)`;
+      $('btnSimpan').textContent = 'PUT – Simpan Perubahan';
+      $('btnSimpan').className = 'b-put full';
+      $('btnBatal').hidden = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetForm() {
+      form.reset();
+      $('id').value = '';
+      $('judulForm').textContent = '2. Tambah Data (POST)';
+      $('btnSimpan').textContent = 'POST – Tambah Data';
+      $('btnSimpan').className = 'b-post full';
+      $('btnBatal').hidden = true;
+    }
+
+    // POST (tambah) atau PUT (ubah)
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!serverUrl) { alert('Hubungkan ke server dulu.'); return; }
+      const body = { nim: $('nim').value, nama: $('nama').value, jurusan: $('jurusan').value };
+      const id = $('id').value;
+      const { ok, data } = id
+        ? await api('PUT', `/api/mahasiswa/${id}`, body)
+        : await api('POST', '/api/mahasiswa', body);
+      if (!ok) { alert(data?.error); return; }
+      resetForm();
+      getAll();
+    });
+
+    $('btnHubungkan').addEventListener('click', hubungkan);
+    $('serverUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') hubungkan(); });
+    $('btnGetAll').addEventListener('click', getAll);
+    $('btnGetId').addEventListener('click', getById);
+    $('cariId').addEventListener('keydown', (e) => { if (e.key === 'Enter') getById(); });
+    $('btnBatal').addEventListener('click', resetForm);
+    $('btnClearLog').addEventListener('click', () => { $('log').innerHTML = '<p class="kosong">Belum ada request.</p>'; });
+
+    if (serverUrl) hubungkan();
+  </script>
+</body>
+</html>
