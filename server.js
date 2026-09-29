@@ -180,7 +180,7 @@ function getLocalIPs() {
 initDatabase()
   .then(() => {
     // '0.0.0.0' = terima koneksi dari device lain, bukan hanya dari laptop sendiri
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log('==========================================================');
       console.log(' DEVICE A (SERVER) berjalan. Alamat API untuk Device B:');
       for (const ip of getLocalIPs()) {
@@ -188,6 +188,18 @@ initDatabase()
       }
       console.log(' Di bawah ini akan muncul log setiap request dari client.');
       console.log('==========================================================');
+    });
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\nPort ${PORT} sedang dipakai: server lain (kemungkinan server ini juga) masih berjalan.`);
+        console.error('Cara mengatasi:');
+        console.error('  1. Cari terminal/jendela lain yang masih menjalankan server, lalu tekan Ctrl + C');
+        console.error('  2. Atau matikan paksa semua Node.js:  taskkill /F /IM node.exe');
+        console.error('  3. Lalu jalankan lagi: npm start');
+      } else {
+        console.error('Server gagal berjalan:', err.message);
+      }
+      process.exit(1);
     });
   })
   .catch((err) => {
