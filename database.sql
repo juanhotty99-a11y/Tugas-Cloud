@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS mahasiswa (
 
 INSERT INTO mahasiswa (nim, nama, jurusan) VALUES
   ('103012400174', 'Junior Mourits Hotty', 'Informatika'),
-  ('103012400399', 'Bred Jonatan Lobo', 'Sistem Informasi');
+  ('103012400399', 'Bred Jonatan Lobo', 'Informatika');
