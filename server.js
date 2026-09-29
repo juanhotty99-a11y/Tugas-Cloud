@@ -17,6 +17,9 @@ const DB_CONFIG = {
 const DB_NAME = 'db_kampus';
 
 const app = express();
+// Percaya header X-Forwarded-For dari ngrok / Cloudflare Tunnel,
+// supaya IP asli tiap device tetap terbaca walau lewat link publik
+app.set('trust proxy', true);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -131,6 +134,8 @@ initDatabase()
       for (const ip of getLocalIPs()) {
         console.log(`  - Di HP     : http://${ip}:${PORT}`);
       }
+      console.log('  - Link publik (satu link untuk semua jaringan):');
+      console.log('    jalankan ngrok / cloudflared, lihat README bagian "Satu Link"');
       console.log('========================================');
     });
   })

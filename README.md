@@ -30,6 +30,7 @@ dibuka ke jaringan). Kalau data ditambah dari HP, data langsung muncul di laptop
 | `public/index.html` | Tampilan web (bisa dibuka dari laptop & HP) untuk tambah/edit/hapus data |
 | `database.sql` | Script SQL (opsional, karena tabel sudah dibuat otomatis oleh server) |
 | `package.json` | Daftar library Node.js |
+| `jalankan-online.bat` | Double-click untuk menjalankan server + ngrok sekaligus (satu link untuk semua jaringan) |
 
 ---
 
@@ -165,14 +166,100 @@ Di terminal VS Code juga terlihat log request dari masing-masing IP, contoh:
 
 Contoh tes dari HP: buka `http://192.168.1.10:3000/api/mahasiswa` → keluar data JSON dari database laptop.
 
-## Bonus: akses dari luar jaringan (beda Wi-Fi / internet)
+## Satu Link untuk Semua Jaringan (seperti web teman)
 
-Kalau dosen minta bisa diakses dari jaringan berbeda (misal HP pakai kuota), jalankan
-tunnel seperti **ngrok** di terminal kedua:
+Cara di atas (`http://192.168.x.x:3000`) hanya jalan kalau HP & laptop **satu Wi-Fi**, dan
+linknya beda antara laptop (`localhost`) dan HP (IP). Supaya **semua device pakai SATU link
+yang sama** dari jaringan apa pun (Wi-Fi beda, kuota, dll), laptop dihubungkan ke internet
+lewat **tunnel**:
 
-```bash
-npx ngrok http 3000
+```
+ HP (kuota, IP 114.x.x.x)  ─┐
+ Laptop teman (Wi-Fi lain) ─┼─▶ https://nama-kamu.ngrok-free.app ──tunnel──▶ Laptop kamu: server.js :3000 ─▶ MySQL
+ Laptop kamu sendiri       ─┘
 ```
 
-(perlu daftar akun gratis di ngrok.com dan menjalankan `npx ngrok config add-authtoken <token>` sekali).
-Ngrok memberi URL publik `https://xxxx.ngrok-free.app` yang bisa dibuka dari mana saja.
+Database & server **tetap di laptop kamu**, tunnel hanya "meneruskan" akses dari internet.
+Di halaman web, bagian "IP perangkat kamu" akan menampilkan IP asli tiap device, jadi
+terlihat jelas bahwa device dengan IP berbeda mengakses database yang sama.
+
+> Syarat: laptop harus **menyala**, `npm start` & tunnel harus **tetap jalan**, dan MySQL tetap Start.
+
+### Pilihan 1 – ngrok (GRATIS, tanpa beli domain, link tetap) ⭐ disarankan
+
+1. Daftar akun gratis di https://ngrok.com (bisa login pakai GitHub).
+2. Download ngrok untuk Windows: https://ngrok.com/download → extract `ngrok.exe`,
+   lalu **taruh `ngrok.exe` di folder `Tugas-Cloud`** (sejajar dengan `server.js`).
+3. Di dashboard ngrok buka menu **Your Authtoken** → copy token-nya, lalu di terminal VS Code:
+
+   ```bash
+   .\ngrok config add-authtoken TOKEN_KAMU
+   ```
+
+   (cukup sekali seumur hidup)
+4. Di dashboard ngrok buka menu **Domains** → setiap akun gratis dapat **1 domain tetap**,
+   contoh `lompat-kucing-123.ngrok-free.app`. Copy nama domain itu.
+5. Jalankan server (terminal 1):
+
+   ```bash
+   npm start
+   ```
+
+6. Buka terminal kedua (klik **+** di panel terminal), jalankan:
+
+   ```bash
+   .\ngrok http --url=lompat-kucing-123.ngrok-free.app 3000
+   ```
+
+   (ganti dengan domain kamu; kalau ngrok versi lama menolak `--url`, pakai `--domain=` )
+7. Buka **`https://lompat-kucing-123.ngrok-free.app`** di laptop, HP, atau device mana pun.
+   Link-nya **selalu sama** setiap kali dijalankan.
+
+   Saat pertama dibuka, ngrok gratis menampilkan halaman peringatan → klik **Visit Site**.
+
+**Biar gampang:** buka file `jalankan-online.bat`, ganti `nama-kamu.ngrok-free.app` dengan
+domain kamu, simpan. Setelah itu cukup **double-click `jalankan-online.bat`** → server &
+ngrok jalan sekaligus.
+
+### Pilihan 2 – Domain sendiri seperti `namakamu.my.id` (Cloudflare Tunnel)
+
+Web teman kamu (`loanch.my.id`) kemungkinan pakai cara ini atau hosting. Butuh domain sendiri:
+
+1. Beli/daftar domain `.my.id` (sangat murah, khusus WNI, daftar pakai KTP) di registrar
+   yang menjual `.my.id`.
+2. Daftar akun gratis di https://dash.cloudflare.com → **Add a domain** → masukkan domain kamu
+   → ikuti petunjuk untuk mengganti **nameserver** domain di panel registrar ke nameserver
+   Cloudflare (tunggu sampai aktif, bisa beberapa menit–24 jam).
+3. Install cloudflared di PowerShell:
+
+   ```powershell
+   winget install --id Cloudflare.cloudflared
+   ```
+
+   Tutup lalu buka lagi VS Code.
+4. Jalankan sekali saja (setup):
+
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create tugas-cloud
+   cloudflared tunnel route dns tugas-cloud tugas.namakamu.my.id
+   ```
+
+5. Setiap mau dipakai: `npm start` di terminal 1, lalu di terminal 2:
+
+   ```bash
+   cloudflared tunnel --url http://localhost:3000 run tugas-cloud
+   ```
+
+6. Buka **`https://tugas.namakamu.my.id`** dari device mana pun.
+
+### Tes cepat tanpa daftar apa pun (link berubah tiap dijalankan)
+
+Setelah install cloudflared (langkah 3 di atas):
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+Akan muncul link acak `https://xxxx-xxxx.trycloudflare.com` yang bisa dibuka dari mana saja.
+Cocok untuk demo cepat, tapi link-nya ganti setiap kali perintah dijalankan.
